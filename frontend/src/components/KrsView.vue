@@ -1041,14 +1041,14 @@ async function saveNewCourse() {
           </div>
           <div v-if="activeTab === 'select'" class="form-grid">
             <div class="form-group" :class="{ 'field-error': krsMain.errors.student_nim }">
-              <label>Mahasiswa <span class="required">*</span></label>
+              <label>NIM <span class="required">*</span></label>
               <div class="search-wrapper">
-                <input
-                  v-model="form.student_nim"
+                <NumericInput
+                  :model-value="form.student_nim"
+                  :max-length="12"
                   placeholder="Cari NIM atau nama..."
-                  @input="searchStudents(form.student_nim)"
+                  @update:modelValue="form.student_nim = $event; searchStudents(form.student_nim)"
                   @blur="krsMain.validateField('student_nim')"
-                  class="w-full rounded-[10px] border border-[rgba(255,255,255,0.4)] bg-[rgba(255,255,255,0.35)] px-3 py-2 text-sm outline-none backdrop-blur-[10px] transition-all focus:border-[rgba(0,122,255,0.6)] focus:ring-2 focus:ring-[rgba(0,122,255,0.2)]"
                 />
                 <button class="btn-link" @click="activeTab = 'new-student'">+ Baru</button>
               </div>
