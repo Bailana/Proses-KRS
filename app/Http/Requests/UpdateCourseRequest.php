@@ -14,8 +14,9 @@ class UpdateCourseRequest extends FormRequest
     public function rules(): array
     {
         $id = $this->route('id');
+
         return [
-            'code' => 'sometimes|required|string|max:10|regex:/^[A-Z]{2,4}[0-9]{3}$/|unique:courses,code,' . $id,
+            'code' => 'sometimes|required|string|max:10|regex:/^[A-Z]{2,4}[0-9]{3}$/|unique:courses,code,'.$id,
             'name' => 'sometimes|required|string|min:3|max:120',
             'description' => 'nullable|string|max:2000',
             'credits' => 'nullable|integer|min:1|max:6',

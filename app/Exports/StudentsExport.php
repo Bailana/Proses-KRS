@@ -3,8 +3,6 @@
 namespace App\Exports;
 
 use App\Models\Student;
-use App\Models\Course;
-use App\Models\Enrollment;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
@@ -21,12 +19,13 @@ class StudentsExport implements FromQuery, WithHeadings, WithMapping
     public function query()
     {
         $query = Student::query();
-        if (!empty($this->filters['department'])) {
+        if (! empty($this->filters['department'])) {
             $query->where('department', $this->filters['department']);
         }
-        if (!empty($this->filters['status'])) {
+        if (! empty($this->filters['status'])) {
             $query->where('status', $this->filters['status']);
         }
+
         return $query;
     }
 

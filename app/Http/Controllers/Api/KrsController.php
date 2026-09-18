@@ -3,19 +3,27 @@
 namespace App\Http\Controllers\Api;
 
 use App\Jobs\ExportEnrollmentsJob;
-use App\Models\Enrollment;
-use App\Models\Student;
 use App\Models\Course;
+use App\Models\Enrollment;
+use App\Models\EnrollmentStats;
+use App\Models\Student;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class KrsController extends BaseController
 {
     protected $model = Enrollment::class;
+
     protected $searchable = [];
+
     protected $filterable = ['status', 'academic_year', 'semester'];
+
     protected $sortable = ['created_at', 'academic_year', 'semester'];
+
     protected $defaultSort = 'created_at';
+
     protected $defaultSortDir = 'desc';
 
     protected $filterColumns = [
@@ -55,14 +63,14 @@ class KrsController extends BaseController
         ];
     }
 
-    public function index(Request $request): \Illuminate\Http\JsonResponse
+    public function index(Request $request): JsonResponse
     {
         $page = (int) $request->input('page', 1);
         $perPage = min((int) $request->input('per_page', $request->input('size', 50)), 100);
         $sortField = $request->input('sort', 'id');
         $sortDir = strtolower($request->input('direction', 'desc'));
 
-        if (!in_array($sortDir, ['asc', 'desc'])) {
+        if (! in_array($sortDir, ['asc', 'desc'])) {
             $sortDir = 'desc';
         }
 
@@ -74,12 +82,12 @@ class KrsController extends BaseController
         $hasValidFilters = false;
         if (is_string($rawFilters)) {
             $decoded = json_decode($rawFilters, true);
-            $hasValidFilters = is_array($decoded) && !empty($decoded);
+            $hasValidFilters = is_array($decoded) && ! empty($decoded);
         } elseif (is_array($rawFilters)) {
-            $hasValidFilters = !empty($rawFilters);
+            $hasValidFilters = ! empty($rawFilters);
         }
 
-        $hasSearch = !empty($request->input('search'))
+        $hasSearch = ! empty($request->input('search'))
             || $request->has('search_nim') || $request->has('search_name') || $request->has('search_course_code')
             || $hasValidFilters;
 
@@ -88,17 +96,17 @@ class KrsController extends BaseController
         $this->applyAdvancedFilters($query, $request);
         $this->applyAdvancedSorts($query, $request);
 
-        if (!empty($request->input('search')) || $request->has('search_nim') || $request->has('search_name') || $request->has('search_course_code')) {
+        if (! empty($request->input('search')) || $request->has('search_nim') || $request->has('search_name') || $request->has('search_course_code')) {
             $this->applySearch($query, $request);
         }
 
         if (in_array($sortField, ['academic_year', 'semester', 'status', 'grade', 'gpa_points', 'created_at'])) {
-            $query->orderBy('enrollments.' . $sortField, $sortDir);
+            $query->orderBy('enrollments.'.$sortField, $sortDir);
         }
 
         // Count with cache for slow filters
-        if (!$hasSearch && !$hasFilter) {
-            $stats = \App\Models\EnrollmentStats::first();
+        if (! $hasSearch && ! $hasFilter) {
+            $stats = EnrollmentStats::first();
             $total = (int) ($stats?->total ?? 0);
 
             // Keyset pagination for unfiltered results
@@ -117,8 +125,8 @@ class KrsController extends BaseController
         } else {
             // OFFSET pagination for filtered results
             // Cache count for slow filters (semester, academic_year) to avoid 1s+ queries
-            $cacheKey = 'krs_count_' . md5($query->toSql() . json_encode($query->getBindings()));
-            $total = (int) \Illuminate\Support\Facades\Cache::remember($cacheKey, 60, function () use ($query) {
+            $cacheKey = 'krs_count_'.md5($query->toSql().json_encode($query->getBindings()));
+            $total = (int) Cache::remember($cacheKey, 60, function () use ($query) {
                 return (clone $query)->count();
             });
             $enrollments = $query
@@ -155,10 +163,14 @@ class KrsController extends BaseController
     protected function applyAdvancedFilters($query, Request $request): void
     {
         $filters = $request->input('filters');
-        if (!$filters) return;
+        if (! $filters) {
+            return;
+        }
 
         $filters = is_string($filters) ? json_decode($filters, true) : $filters;
-        if (!is_array($filters) || empty($filters)) return;
+        if (! is_array($filters) || empty($filters)) {
+            return;
+        }
 
         $logic = strtolower($request->input('filter_logic', 'and'));
 
@@ -170,20 +182,24 @@ class KrsController extends BaseController
             // Decode nested JSON arrays (e.g., for 'in' operator)
             if (is_string($value) && str_starts_with($value, '[')) {
                 $decoded = json_decode($value, true);
-                if (is_array($decoded)) $value = $decoded;
+                if (is_array($decoded)) {
+                    $value = $decoded;
+                }
             }
 
-            if (!isset($this->filterColumns[$column])) continue;
+            if (! isset($this->filterColumns[$column])) {
+                continue;
+            }
 
             $colDef = $this->filterColumns[$column];
             $tableName = $colDef['table'];
             $colName = $colDef['column'];
 
-            if (in_array($tableName, ['students', 'courses']) && !$query->getQuery()->joins) {
+            if (in_array($tableName, ['students', 'courses']) && ! $query->getQuery()->joins) {
                 $this->ensureJoins($query);
             }
 
-            $fullColumn = $tableName . '.' . $colName;
+            $fullColumn = $tableName.'.'.$colName;
             $op = $this->getOperatorMap()[$operator] ?? '=';
 
             if ($i === 0) {
@@ -221,16 +237,16 @@ class KrsController extends BaseController
     {
         switch ($op) {
             case 'like':
-                $query->where($column, 'LIKE', '%' . $value . '%');
+                $query->where($column, 'LIKE', '%'.$value.'%');
                 break;
             case 'not_like':
-                $query->where($column, 'NOT LIKE', '%' . $value . '%');
+                $query->where($column, 'NOT LIKE', '%'.$value.'%');
                 break;
             case 'like_prefix':
-                $query->where($column, 'LIKE', $value . '%');
+                $query->where($column, 'LIKE', $value.'%');
                 break;
             case 'like_suffix':
-                $query->where($column, 'LIKE', '%' . $value);
+                $query->where($column, 'LIKE', '%'.$value);
                 break;
             case '=':
                 $query->where($column, '=', $value);
@@ -276,7 +292,7 @@ class KrsController extends BaseController
 
     protected function ensureJoins($query): void
     {
-        if (!$query->getQuery()->joins) {
+        if (! $query->getQuery()->joins) {
             $query->leftJoin('students', 'enrollments.student_id', '=', 'students.id');
             $query->leftJoin('courses', 'enrollments.course_id', '=', 'courses.id');
         }
@@ -285,10 +301,14 @@ class KrsController extends BaseController
     protected function applyAdvancedSorts($query, Request $request): void
     {
         $sorts = $request->input('sorts');
-        if (!$sorts) return;
+        if (! $sorts) {
+            return;
+        }
 
         $sorts = is_string($sorts) ? json_decode($sorts, true) : $sorts;
-        if (!is_array($sorts) || empty($sorts)) return;
+        if (! is_array($sorts) || empty($sorts)) {
+            return;
+        }
 
         $validFields = ['nim', 'student_name', 'course_code', 'course_name', 'academic_year', 'semester', 'status', 'grade', 'gpa_points', 'created_at'];
 
@@ -296,8 +316,12 @@ class KrsController extends BaseController
             $field = $sort['field'] ?? '';
             $dir = strtolower($sort['direction'] ?? 'asc');
 
-            if (!in_array($field, $validFields)) continue;
-            if (!in_array($dir, ['asc', 'desc'])) $dir = 'asc';
+            if (! in_array($field, $validFields)) {
+                continue;
+            }
+            if (! in_array($dir, ['asc', 'desc'])) {
+                $dir = 'asc';
+            }
 
             if ($i === 0) {
                 // First sort — check if already set via simple sort param
@@ -342,7 +366,9 @@ class KrsController extends BaseController
         $name = trim($request->input('search_name', ''));
         $courseCode = trim($request->input('search_course_code', ''));
 
-        if (!$nim && !$name && !$courseCode) return;
+        if (! $nim && ! $name && ! $courseCode) {
+            return;
+        }
 
         $studentIds = [];
         if ($nim) {
@@ -359,18 +385,18 @@ class KrsController extends BaseController
         $uniqueCourseIds = array_unique($courseIds);
 
         $query->where(function ($q) use ($uniqueStudentIds, $uniqueCourseIds) {
-            if (!empty($uniqueStudentIds)) {
+            if (! empty($uniqueStudentIds)) {
                 $q->whereIn('enrollments.student_id', $uniqueStudentIds);
             }
-            if (!empty($uniqueCourseIds)) {
+            if (! empty($uniqueCourseIds)) {
                 $q->orWhereIn('enrollments.course_id', $uniqueCourseIds);
             }
         });
     }
 
-    public function stats(Request $request): \Illuminate\Http\JsonResponse
+    public function stats(Request $request): JsonResponse
     {
-        $stats = \App\Models\EnrollmentStats::firstOrcreate();
+        $stats = EnrollmentStats::firstOrcreate();
 
         // Apply filters client-side (cached)
         $filters = $request->input('filters');
@@ -415,10 +441,10 @@ class KrsController extends BaseController
         $search = $request->input('q', '');
 
         if ($search) {
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('nim', 'like', "%{$search}%")
-                  ->orWhere('name', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%");
+                    ->orWhere('name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%");
             });
         }
 
@@ -434,9 +460,9 @@ class KrsController extends BaseController
         $search = $request->input('q', '');
 
         if ($search) {
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('code', 'like', "%{$search}%")
-                  ->orWhere('name', 'like', "%{$search}%");
+                    ->orWhere('name', 'like', "%{$search}%");
             });
         }
 
@@ -471,9 +497,9 @@ class KrsController extends BaseController
 
             DB::beginTransaction();
 
-            if (!empty($validated['existing_student_id'])) {
+            if (! empty($validated['existing_student_id'])) {
                 $student = Student::findOrFail($validated['existing_student_id']);
-            } elseif (!empty($validated['student_nim'])) {
+            } elseif (! empty($validated['student_nim'])) {
                 $student = Student::firstOrCreate(
                     ['nim' => $validated['student_nim']],
                     [
@@ -484,9 +510,9 @@ class KrsController extends BaseController
                 );
             }
 
-            if (!empty($validated['existing_course_id'])) {
+            if (! empty($validated['existing_course_id'])) {
                 $course = Course::findOrFail($validated['existing_course_id']);
-            } elseif (!empty($validated['course_code'])) {
+            } elseif (! empty($validated['course_code'])) {
                 $course = Course::firstOrCreate(
                     ['code' => $validated['course_code']],
                     [
@@ -496,10 +522,11 @@ class KrsController extends BaseController
                 );
             }
 
-            if (!$student || !$course) {
+            if (! $student || ! $course) {
                 DB::rollBack();
+
                 return response()->json([
-                    'error' => 'Student and Course are required'
+                    'error' => 'Student and Course are required',
                 ], 422);
             }
 
@@ -511,16 +538,18 @@ class KrsController extends BaseController
 
             if ($exists) {
                 DB::rollBack();
+
                 return response()->json([
-                    'error' => 'Student already enrolled in this course and semester'
+                    'error' => 'Student already enrolled in this course and semester',
                 ], 409);
             }
 
             $course->refresh();
             if ($course->current_enrollments >= $course->max_students) {
                 DB::rollBack();
+
                 return response()->json([
-                    'error' => 'Course is full'
+                    'error' => 'Course is full',
                 ], 422);
             }
 
@@ -542,13 +571,14 @@ class KrsController extends BaseController
 
             return response()->json([
                 'message' => 'Enrollment created successfully',
-                'data' => $enrollment
+                'data' => $enrollment,
             ], 201);
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
-                'error' => 'Failed to create enrollment: ' . $e->getMessage()
+                'error' => 'Failed to create enrollment: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -575,14 +605,14 @@ class KrsController extends BaseController
         try {
             DB::beginTransaction();
 
-            if (!empty($validated['student_name']) || !empty($validated['student_email'])) {
+            if (! empty($validated['student_name']) || ! empty($validated['student_email'])) {
                 $enrollment->student->update([
                     'name' => $validated['student_name'] ?? $enrollment->student->name,
                     'email' => $validated['student_email'] ?? $enrollment->student->email,
                 ]);
             }
 
-            if (!empty($validated['course_name'])) {
+            if (! empty($validated['course_name'])) {
                 $enrollment->course->update([
                     'name' => $validated['course_name'] ?? $enrollment->course->name,
                 ]);
@@ -609,13 +639,14 @@ class KrsController extends BaseController
 
             return response()->json([
                 'message' => 'Enrollment updated successfully',
-                'data' => $enrollment
+                'data' => $enrollment,
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
-                'error' => 'Failed to update enrollment: ' . $e->getMessage()
+                'error' => 'Failed to update enrollment: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -635,12 +666,12 @@ class KrsController extends BaseController
             $enrollment->delete();
 
             return response()->json([
-                'message' => 'Enrollment deleted successfully'
+                'message' => 'Enrollment deleted successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
-                'error' => 'Failed to delete enrollment: ' . $e->getMessage()
+                'error' => 'Failed to delete enrollment: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -674,9 +705,9 @@ class KrsController extends BaseController
         $jobId = DB::getPdo()->lastInsertId();
         $params['job_id'] = $jobId;
 
-        $filePath = storage_path('app/exports/krs_' . $jobId . '.csv');
+        $filePath = storage_path('app/exports/krs_'.$jobId.'.csv');
         $path = pathinfo($filePath);
-        if (!is_dir($path['dirname'])) {
+        if (! is_dir($path['dirname'])) {
             mkdir($path['dirname'], 0755, true);
         }
 
@@ -709,7 +740,7 @@ class KrsController extends BaseController
             ->where('download_token', $token)
             ->first();
 
-        if (!$job) {
+        if (! $job) {
             return response()->json(['error' => 'Job not found'], 404);
         }
 
@@ -730,7 +761,7 @@ class KrsController extends BaseController
             ->where('download_token', $token)
             ->first();
 
-        if (!$job) {
+        if (! $job) {
             abort(404);
         }
 
@@ -742,7 +773,7 @@ class KrsController extends BaseController
             ], 409);
         }
 
-        if (!file_exists($job->file_path)) {
+        if (! file_exists($job->file_path)) {
             abort(404);
         }
 
@@ -756,6 +787,7 @@ class KrsController extends BaseController
     public function show(string $id)
     {
         $enrollment = Enrollment::with(['student', 'course'])->findOrFail($id);
+
         return response()->json($enrollment);
     }
 }

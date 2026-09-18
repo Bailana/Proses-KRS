@@ -131,6 +131,15 @@ return [
             'handler' => NullHandler::class,
         ],
 
+        // API request logging — dedicated channel for observability
+        'api' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/api.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'max_files' => env('LOG_API_DAILY_DAYS', 14),
+            'replace_placeholders' => true,
+        ],
+
         'emergency' => [
             'path' => storage_path('logs/laravel.log'),
         ],

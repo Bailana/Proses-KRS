@@ -2,13 +2,13 @@
 
 namespace App\Jobs;
 
+use Closure;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
-use Closure;
 
 class ExportEnrollmentsJob implements ShouldQueue
 {
@@ -17,8 +17,11 @@ class ExportEnrollmentsJob implements ShouldQueue
     public $timeout = 3600;
 
     protected array $params;
+
     protected string $filePath;
+
     protected int $count = 0;
+
     protected int $progress = 0;
 
     protected const FILTER_COLUMNS = [
@@ -171,7 +174,9 @@ class ExportEnrollmentsJob implements ShouldQueue
 
     protected function buildFilterClosure(?array $filters, string $logic): ?Closure
     {
-        if (empty($filters)) return null;
+        if (empty($filters)) {
+            return null;
+        }
         $logic = strtolower($logic) === 'or' ? 'or' : 'and';
 
         return function ($query) use ($filters, $logic) {
@@ -183,10 +188,14 @@ class ExportEnrollmentsJob implements ShouldQueue
 
                 if (is_string($value) && str_starts_with($value, '[')) {
                     $decoded = json_decode($value, true);
-                    if (is_array($decoded)) $value = $decoded;
+                    if (is_array($decoded)) {
+                        $value = $decoded;
+                    }
                 }
 
-                if (!isset(self::FILTER_COLUMNS[$column])) continue;
+                if (! isset(self::FILTER_COLUMNS[$column])) {
+                    continue;
+                }
 
                 $colDef = self::FILTER_COLUMNS[$column];
                 $tableName = $colDef[0];
@@ -194,7 +203,7 @@ class ExportEnrollmentsJob implements ShouldQueue
 
                 if ($tableName !== 'enrollments') {
                     $sql = $query->toSql();
-                    if (stripos($sql, 'join ' . $tableName) === false) {
+                    if (stripos($sql, 'join '.$tableName) === false) {
                         $query->join($tableName, "enrollments.{$tableName}_id", '=', "{$tableName}.id");
                     }
                 }
@@ -217,18 +226,30 @@ class ExportEnrollmentsJob implements ShouldQueue
     protected function applyFilterCondition($query, $column, $op, $value): void
     {
         switch ($op) {
-            case 'like': $query->where($column, 'LIKE', '%' . $value . '%'); break;
-            case 'not_like': $query->where($column, 'NOT LIKE', '%' . $value . '%'); break;
-            case 'like_prefix': $query->where($column, 'LIKE', $value . '%'); break;
-            case 'like_suffix': $query->where($column, 'LIKE', '%' . $value); break;
-            case '=': $query->where($column, '=', $value); break;
-            case '!=': $query->where($column, '<>', $value); break;
-            case '>': $query->where($column, '>', $value); break;
-            case '<': $query->where($column, '<', $value); break;
-            case '>=': $query->where($column, '>=', $value); break;
-            case '<=': $query->where($column, '<=', $value); break;
+            case 'like': $query->where($column, 'LIKE', '%'.$value.'%');
+                break;
+            case 'not_like': $query->where($column, 'NOT LIKE', '%'.$value.'%');
+                break;
+            case 'like_prefix': $query->where($column, 'LIKE', $value.'%');
+                break;
+            case 'like_suffix': $query->where($column, 'LIKE', '%'.$value);
+                break;
+            case '=': $query->where($column, '=', $value);
+                break;
+            case '!=': $query->where($column, '<>', $value);
+                break;
+            case '>': $query->where($column, '>', $value);
+                break;
+            case '<': $query->where($column, '<', $value);
+                break;
+            case '>=': $query->where($column, '>=', $value);
+                break;
+            case '<=': $query->where($column, '<=', $value);
+                break;
             case 'between':
-                if (is_array($value) && count($value) === 2) $query->whereBetween($column, $value);
+                if (is_array($value) && count($value) === 2) {
+                    $query->whereBetween($column, $value);
+                }
                 break;
             case 'in':
                 $values = is_array($value) ? $value : [$value];
@@ -238,8 +259,10 @@ class ExportEnrollmentsJob implements ShouldQueue
                 $values = is_array($value) ? $value : [$value];
                 $query->whereNotIn($column, $values);
                 break;
-            case 'is_null': $query->whereNull($column); break;
-            case 'is_not_null': $query->whereNotNull($column); break;
+            case 'is_null': $query->whereNull($column);
+                break;
+            case 'is_not_null': $query->whereNotNull($column);
+                break;
             default: $query->where($column, $op, $value);
         }
     }
@@ -247,18 +270,30 @@ class ExportEnrollmentsJob implements ShouldQueue
     protected function applyFilterConditionOr($query, $column, $op, $value): void
     {
         switch ($op) {
-            case 'like': $query->orWhere($column, 'LIKE', '%' . $value . '%'); break;
-            case 'not_like': $query->orWhere($column, 'NOT LIKE', '%' . $value . '%'); break;
-            case 'like_prefix': $query->orWhere($column, 'LIKE', $value . '%'); break;
-            case 'like_suffix': $query->orWhere($column, 'LIKE', '%' . $value); break;
-            case '=': $query->orWhere($column, '=', $value); break;
-            case '!=': $query->orWhere($column, '<>', $value); break;
-            case '>': $query->orWhere($column, '>', $value); break;
-            case '<': $query->orWhere($column, '<', $value); break;
-            case '>=': $query->orWhere($column, '>=', $value); break;
-            case '<=': $query->orWhere($column, '<=', $value); break;
+            case 'like': $query->orWhere($column, 'LIKE', '%'.$value.'%');
+                break;
+            case 'not_like': $query->orWhere($column, 'NOT LIKE', '%'.$value.'%');
+                break;
+            case 'like_prefix': $query->orWhere($column, 'LIKE', $value.'%');
+                break;
+            case 'like_suffix': $query->orWhere($column, 'LIKE', '%'.$value);
+                break;
+            case '=': $query->orWhere($column, '=', $value);
+                break;
+            case '!=': $query->orWhere($column, '<>', $value);
+                break;
+            case '>': $query->orWhere($column, '>', $value);
+                break;
+            case '<': $query->orWhere($column, '<', $value);
+                break;
+            case '>=': $query->orWhere($column, '>=', $value);
+                break;
+            case '<=': $query->orWhere($column, '<=', $value);
+                break;
             case 'between':
-                if (is_array($value) && count($value) === 2) $query->orWhereBetween($column, $value);
+                if (is_array($value) && count($value) === 2) {
+                    $query->orWhereBetween($column, $value);
+                }
                 break;
             case 'in':
                 $values = is_array($value) ? $value : [$value];
@@ -268,8 +303,10 @@ class ExportEnrollmentsJob implements ShouldQueue
                 $values = is_array($value) ? $value : [$value];
                 $query->orWhereNotIn($column, $values);
                 break;
-            case 'is_null': $query->orWhereNull($column); break;
-            case 'is_not_null': $query->orWhereNotNull($column); break;
+            case 'is_null': $query->orWhereNull($column);
+                break;
+            case 'is_not_null': $query->orWhereNotNull($column);
+                break;
             default: $query->orWhere($column, $op, $value);
         }
     }
@@ -282,6 +319,7 @@ class ExportEnrollmentsJob implements ShouldQueue
                 $filterClosure($q);
             });
         }
+
         return (int) $query->count();
     }
 }

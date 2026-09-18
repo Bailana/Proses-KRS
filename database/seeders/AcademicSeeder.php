@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -49,10 +50,10 @@ class AcademicSeeder extends Seeder
             $nim = 20000000 + $i; // bigint, NIM mulai 20000001
             $rows[] = [
                 'nim' => $nim,
-                'name' => $firstNames[array_rand($firstNames)] . ' ' . $lastNames[array_rand($lastNames)],
-                'email' => 'student' . $i . '@university.edu',
-                'phone' => '+601' . rand(10000000, 99999999),
-                'date_of_birth' => \Carbon\Carbon::now()->subYears(rand(18, 30))->format('Y-m-d'),
+                'name' => $firstNames[array_rand($firstNames)].' '.$lastNames[array_rand($lastNames)],
+                'email' => 'student'.$i.'@university.edu',
+                'phone' => '+601'.rand(10000000, 99999999),
+                'date_of_birth' => Carbon::now()->subYears(rand(18, 30))->format('Y-m-d'),
                 'gender' => $gender[array_rand($gender)],
                 'address' => fake()->address(),
             ];
@@ -91,8 +92,8 @@ class AcademicSeeder extends Seeder
         foreach ($prefixes as $code => $name) {
             for ($num = 101; $num <= 402; $num += 101) {
                 $rows[] = [
-                    'code' => $code . $num,
-                    'name' => $name . ' ' . $num . ' ' . ucfirst(str_replace('_', ' ', strtolower($name))),
+                    'code' => $code.$num,
+                    'name' => $name.' '.$num.' '.ucfirst(str_replace('_', ' ', strtolower($name))),
                     'description' => fake()->sentence(10),
                     'credits' => rand(2, 6),
                     'department' => $name,
@@ -114,19 +115,19 @@ class AcademicSeeder extends Seeder
     private function createEnrollments(int $target): void
     {
         $students = DB::table('students')->pluck('id')->toArray();
-        $courses  = DB::table('courses')->pluck('id')->toArray();
-        $years    = [];
+        $courses = DB::table('courses')->pluck('id')->toArray();
+        $years = [];
         for ($y = 2018; $y <= 2026; $y++) {
-            $years[] = "{$y}-" . ($y + 1);
+            $years[] = "{$y}-".($y + 1);
         }
         $semesters = ['GANJIL', 'GENAP'];
-        $grades    = ['A', 'A-', 'B+', 'B', 'B-', 'C', 'C-', 'D', 'E', 'I', 'S', 'K'];
-        $gpaMap    = ['A' => 4.0, 'A-' => 3.7, 'B+' => 3.3, 'B' => 3.0, 'B-' => 2.7,
+        $grades = ['A', 'A-', 'B+', 'B', 'B-', 'C', 'C-', 'D', 'E', 'I', 'S', 'K'];
+        $gpaMap = ['A' => 4.0, 'A-' => 3.7, 'B+' => 3.3, 'B' => 3.0, 'B-' => 2.7,
             'C' => 2.0, 'C-' => 1.7, 'D' => 1.0, 'E' => 0.0, 'I' => null, 'S' => null, 'K' => null];
 
         $studentCount = count($students);
-        $courseCount  = count($courses);
-        $comboCount   = count($years) * count($semesters); // 18
+        $courseCount = count($courses);
+        $comboCount = count($years) * count($semesters); // 18
 
         // Each unique combo = one enrollment per student-course pair
         // Total possible = students × courses × combos
@@ -136,8 +137,8 @@ class AcademicSeeder extends Seeder
         $loops = (int) ceil($target / $totalPossible);
 
         $batchValues = [];
-        $batchCount  = 0;
-        $inserted    = 0;
+        $batchCount = 0;
+        $inserted = 0;
         $insertBatchSize = 2000;
 
         $allCombos = [];
@@ -153,9 +154,11 @@ class AcademicSeeder extends Seeder
 
                 foreach ($courses as $courseId) {
                     foreach ($allCombos as [$year, $sem]) {
-                        if ($inserted >= $target) break;
+                        if ($inserted >= $target) {
+                            break;
+                        }
                         $status = fake()->randomElement(['DRAFT', 'SUBMITTED', 'APPROVED', 'APPROVED', 'REJECTED', 'DRAFT']);
-                        $grade  = in_array($status, ['APPROVED', 'REJECTED']) ? fake()->randomElement($grades) : null;
+                        $grade = in_array($status, ['APPROVED', 'REJECTED']) ? fake()->randomElement($grades) : null;
 
                         $batchValues[] = [$studentId, $courseId, $year, $sem, $status, $grade,
                             $grade !== null ? $gpaMap[$grade] ?? null : null];
@@ -165,18 +168,20 @@ class AcademicSeeder extends Seeder
                         if ($batchCount >= $insertBatchSize) {
                             $this->insertEnrollmentsBatch($batchValues);
                             $batchValues = [];
-                            $batchCount  = 0;
+                            $batchCount = 0;
                             if ($inserted % 500000 === 0) {
                                 echo "Enrollments: {$inserted}/{$target}...\n";
                             }
                         }
                     }
-                    if ($inserted >= $target) break;
+                    if ($inserted >= $target) {
+                        break;
+                    }
                 }
             }
         }
 
-        if (!empty($batchValues)) {
+        if (! empty($batchValues)) {
             $this->insertEnrollmentsBatch($batchValues);
         }
 

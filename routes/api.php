@@ -1,10 +1,10 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\StudentController;
 use App\Http\Controllers\Api\CourseController;
 use App\Http\Controllers\Api\EnrollmentController;
 use App\Http\Controllers\Api\KrsController;
+use App\Http\Controllers\Api\StudentController;
+use Illuminate\Support\Facades\Route;
 
 Route::get('/students', [StudentController::class, 'index']);
 Route::get('/students/search', [StudentController::class, 'search']);

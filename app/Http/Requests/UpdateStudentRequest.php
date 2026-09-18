@@ -14,10 +14,11 @@ class UpdateStudentRequest extends FormRequest
     public function rules(): array
     {
         $id = $this->route('id');
+
         return [
-            'nim' => 'sometimes|required|string|min:8|max:12|regex:/^[0-9]{8,12}$/|unique:students,nim,' . $id,
+            'nim' => 'sometimes|required|string|min:8|max:12|regex:/^[0-9]{8,12}$/|unique:students,nim,'.$id,
             'name' => 'sometimes|required|string|min:3|max:100',
-            'email' => 'sometimes|required|email|max:255|unique:students,email,' . $id,
+            'email' => 'sometimes|required|email|max:255|unique:students,email,'.$id,
             'phone' => 'nullable|string|min:3|max:20|regex:/^[0-9+]+$/',
             'date_of_birth' => 'nullable|date|before:today',
             'gender' => 'nullable|in:male,female,other',

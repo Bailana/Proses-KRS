@@ -3,18 +3,24 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Database\Eloquent\Builder;
 
 class BaseController extends Controller
 {
     protected $model;
+
     protected $searchable = [];
+
     protected $filterable = [];
+
     protected $sortable = ['created_at'];
+
     protected $defaultSort = 'created_at';
+
     protected $defaultSortDir = 'desc';
+
     protected $perPage = 50;
 
     public function index(Request $request): JsonResponse
@@ -51,7 +57,9 @@ class BaseController extends Controller
     protected function applySearch(Builder $query, Request $request): void
     {
         $q = $request->input('search', '');
-        if (empty($q)) return;
+        if (empty($q)) {
+            return;
+        }
 
         $query->where(function (Builder $builder) use ($q) {
             foreach ($this->searchable as $field) {
@@ -65,11 +73,11 @@ class BaseController extends Controller
         $sortField = $request->input('sort', $this->defaultSort);
         $sortDir = $request->input('direction', 'asc');
 
-        if (!in_array($sortField, $this->sortable)) {
+        if (! in_array($sortField, $this->sortable)) {
             $sortField = $this->defaultSort;
         }
 
-        if (!in_array(strtolower($sortDir), ['asc', 'desc'])) {
+        if (! in_array(strtolower($sortDir), ['asc', 'desc'])) {
             $sortDir = 'asc';
         }
 

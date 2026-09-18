@@ -4,25 +4,33 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Requests\StoreEnrollmentRequest;
 use App\Http\Requests\UpdateEnrollmentRequest;
-use App\Models\Enrollment;
 use App\Models\Course;
+use App\Models\Enrollment;
+use Illuminate\Database\QueryException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class EnrollmentController extends BaseController
 {
     protected $model = Enrollment::class;
+
     protected $searchable = [];
+
     protected $filterable = ['status', 'academic_year', 'semester'];
+
     protected $sortable = ['created_at', 'academic_year', 'semester', 'gpa_points'];
+
     protected $defaultSort = 'created_at';
+
     protected $defaultSortDir = 'desc';
 
-    public function index(Request $request): \Illuminate\Http\JsonResponse
+    public function index(Request $request): JsonResponse
     {
         $query = Enrollment::query();
         $this->applyFilters($query, $request);
         $this->applySorting($query, $request);
+
         return $this->paginate($query, $request);
     }
 
@@ -50,7 +58,7 @@ class EnrollmentController extends BaseController
             $enrollment = Enrollment::create($validated);
             $course->increment('current_enrollments');
             DB::commit();
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             DB::rollBack();
             if ($e->getCode() === '23000') {
                 return response()->json(['error' => 'Student already enrolled in this course and semester'], 409);
@@ -59,12 +67,14 @@ class EnrollmentController extends BaseController
         }
 
         $enrollment->load(['student', 'course']);
+
         return response()->json($enrollment, 201);
     }
 
     public function show(string $id)
     {
         $enrollment = Enrollment::with(['student', 'course'])->findOrFail($id);
+
         return response()->json($enrollment);
     }
 
@@ -82,6 +92,7 @@ class EnrollmentController extends BaseController
 
         $enrollment->update($validated);
         $enrollment->load(['student', 'course']);
+
         return response()->json($enrollment);
     }
 
@@ -92,6 +103,7 @@ class EnrollmentController extends BaseController
             $enrollment->course->decrement('current_enrollments');
         }
         $enrollment->delete();
+
         return response()->json(null, 204);
     }
 
@@ -100,6 +112,7 @@ class EnrollmentController extends BaseController
         $enrollments = Enrollment::with('course')
             ->where('student_id', $studentId)
             ->get();
+
         return response()->json($enrollments);
     }
 
@@ -108,21 +121,22 @@ class EnrollmentController extends BaseController
         $enrollments = Enrollment::with('student')
             ->where('course_id', $courseId)
             ->get();
+
         return response()->json($enrollments);
     }
 
     public function export(Request $request)
     {
-        $filename = 'enrollments_export_' . date('Y-m-d') . '.csv';
+        $filename = 'enrollments_export_'.date('Y-m-d').'.csv';
         $headers = ['Content-Type' => 'text/csv', 'Content-Disposition' => "attachment; filename=\"{$filename}\""];
 
         $query = Enrollment::query();
         $this->applyFilters($query, $request);
 
         $studentIds = $query->select('student_id')->distinct()->pluck('student_id');
-        $courseIds  = $query->select('course_id')->distinct()->pluck('course_id');
-        $students   = DB::table('students')->whereIn('id', $studentIds)->keyBy('id');
-        $courses    = DB::table('courses')->whereIn('id', $courseIds)->keyBy('id');
+        $courseIds = $query->select('course_id')->distinct()->pluck('course_id');
+        $students = DB::table('students')->whereIn('id', $studentIds)->keyBy('id');
+        $courses = DB::table('courses')->whereIn('id', $courseIds)->keyBy('id');
 
         $output = fopen('php://output', 'w');
         fputcsv($output, ['NIM', 'Student Name', 'Course Code', 'Course Name', 'Academic Year', 'Semester', 'Status', 'Grade', 'GPA Points']);
@@ -144,6 +158,7 @@ class EnrollmentController extends BaseController
         }
 
         fclose($output);
+
         return response()->stream(function () {}, 200, $headers);
     }
 }

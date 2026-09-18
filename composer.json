@@ -32,6 +32,15 @@
         }
     },
     "scripts": {
+        "lint": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php artisan pint --test",
+            "echo '✅ Lint passed'"
+        ],
+        "lint:fix": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php artisan pint"
+        ],
         "setup": [
             "composer install",
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",

@@ -2,9 +2,9 @@
 
 namespace App\Services;
 
-use App\Models\Student;
 use App\Models\Course;
 use App\Models\Enrollment;
+use App\Models\Student;
 use Illuminate\Support\Facades\DB;
 
 class AcademicService
@@ -31,7 +31,7 @@ class AcademicService
                     ->exists();
 
                 if ($exists) {
-                    throw new \RuntimeException("Already enrolled in this course for this semester");
+                    throw new \RuntimeException('Already enrolled in this course for this semester');
                 }
 
                 Enrollment::create([
@@ -46,6 +46,7 @@ class AcademicService
             }
 
             $student->load('enrollments.course');
+
             return $student;
         });
     }
@@ -63,7 +64,7 @@ class AcademicService
             foreach ($data as $row) {
                 try {
                     $studentData = [
-                        'student_id' => $row['student_id'] ?? 'STU' . str_pad(mt_rand(1, 99999), 5, '0', STR_PAD_LEFT),
+                        'student_id' => $row['student_id'] ?? 'STU'.str_pad(mt_rand(1, 99999), 5, '0', STR_PAD_LEFT),
                         'first_name' => $row['first_name'] ?? fake()->firstName(),
                         'last_name' => $row['last_name'] ?? fake()->lastName(),
                         'email' => $row['email'] ?? null,
@@ -73,7 +74,7 @@ class AcademicService
 
                     $student = Student::create($studentData);
 
-                    if (!empty($row['courses'])) {
+                    if (! empty($row['courses'])) {
                         foreach ($row['courses'] as $courseId) {
                             $course = Course::find($courseId);
                             if ($course && $course->current_enrollments < $course->max_students) {
@@ -113,7 +114,9 @@ class AcademicService
             $count = 0;
             foreach ($enrollmentIds as $id) {
                 $enrollment = Enrollment::with('course')->find($id);
-                if (!$enrollment) continue;
+                if (! $enrollment) {
+                    continue;
+                }
 
                 $oldStatus = $enrollment->status;
                 $enrollment->update(['status' => $newStatus, 'grade' => $grade]);
@@ -126,6 +129,7 @@ class AcademicService
 
                 $count++;
             }
+
             return $count;
         });
     }

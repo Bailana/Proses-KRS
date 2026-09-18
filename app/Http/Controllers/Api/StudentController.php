@@ -5,35 +5,44 @@ namespace App\Http\Controllers\Api;
 use App\Http\Requests\StoreStudentRequest;
 use App\Http\Requests\UpdateStudentRequest;
 use App\Models\Student;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class StudentController extends BaseController
 {
     protected $model = Student::class;
+
     protected $searchable = ['nim', 'name', 'email'];
+
     protected $filterable = [];
+
     protected $sortable = ['name', 'nim', 'created_at'];
+
     protected $defaultSort = 'nim';
+
     protected $defaultSortDir = 'asc';
 
-    public function index(Request $request): \Illuminate\Http\JsonResponse
+    public function index(Request $request): JsonResponse
     {
         $query = Student::query();
         $this->applyFilters($query, $request);
         $this->applySearch($query, $request);
         $this->applySorting($query, $request);
+
         return $this->paginate($query, $request);
     }
 
     public function store(StoreStudentRequest $request)
     {
         $student = Student::create($request->validated());
+
         return response()->json($student, 201);
     }
 
     public function show(string $id)
     {
         $student = Student::with('enrollments.course')->findOrFail($id);
+
         return response()->json($student);
     }
 
@@ -41,12 +50,14 @@ class StudentController extends BaseController
     {
         $student = Student::findOrFail($id);
         $student->update($request->validated());
+
         return response()->json($student);
     }
 
     public function destroy(string $id)
     {
         Student::findOrFail($id)->delete();
+
         return response()->json(null, 204);
     }
 
@@ -54,12 +65,13 @@ class StudentController extends BaseController
     {
         $query = Student::query();
         $this->applySearch($query, $request);
+
         return $this->paginate($query->limit(20), $request);
     }
 
     public function export(Request $request)
     {
-        $filename = 'students_export_' . date('Y-m-d') . '.csv';
+        $filename = 'students_export_'.date('Y-m-d').'.csv';
         $headers = ['Content-Type' => 'text/csv', 'Content-Disposition' => "attachment; filename=\"{$filename}\""];
 
         $query = Student::query();
@@ -80,6 +92,7 @@ class StudentController extends BaseController
         }
 
         fclose($output);
+
         return response()->stream(function () {}, 200, $headers);
     }
 }
