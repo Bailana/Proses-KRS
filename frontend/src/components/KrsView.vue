@@ -439,15 +439,14 @@ async function searchStudents(query) {
   try {
     const res = await api.get('/api/krs/students/search', { params: { q: query } })
     studentResults.value = res.data
-    const match = res.data.find(s => String(s.nim) === form.value.student_nim)
-    if (match) {
-      form.value.student_id = match.id
-      form.value.student_name = match.name
-      studentResults.value = []
-    } else if (res.data.length === 1) {
-      form.value.student_id = res.data[0].id
-      form.value.student_name = res.data[0].name
-      studentResults.value = []
+    // Only auto-select when the NIM in the form exactly matches a result
+    if (query.length >= 8) {
+      const match = res.data.find(s => String(s.nim) === form.value.student_nim)
+      if (match) {
+        form.value.student_id = match.id
+        form.value.student_name = match.name
+        studentResults.value = []
+      }
     }
   } catch (e) { console.error(e) }
   finally { searchingStudent.value = false }
