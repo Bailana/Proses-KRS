@@ -438,11 +438,25 @@ async function searchStudents(query) {
   finally { searchingStudent.value = false }
 }
 
-function onNimBlur() {
+async function onNimBlur() {
+  // If a match was found in live results, use it directly
   const match = studentResults.value.find(s => s.nim === form.value.student_nim)
   if (match) {
     form.value.student_id = match.id
     form.value.student_name = match.name
+    studentResults.value = []
+    return
+  }
+  // Fallback: query the API in case the search response hasn't arrived yet
+  if (form.value.student_nim && !form.value.student_name) {
+    try {
+      const res = await api.get('/api/krs/students/search', { params: { q: form.value.student_nim } })
+      const found = res.data.find(s => s.nim === form.value.student_nim)
+      if (found) {
+        form.value.student_id = found.id
+        form.value.student_name = found.name
+      }
+    } catch { /* silent */ }
     studentResults.value = []
   }
 }
@@ -1067,7 +1081,7 @@ async function saveNewCourse() {
                   <li v-for="s in studentResults" :key="s.id" @click="selectStudent(s)"><span class="mono">{{ s.nim }}</span> - {{ s.name }}</li>
                 </ul>
               </div>
-              <div v-if="form.student_name && !krsMain.errors.student_nim" class="student-name-display">{{ form.student_name }}</div>
+              <div v-if="form.student_name" class="student-name-display">{{ form.student_name }}</div>
               <small v-if="krsMain.errors.student_nim" class="field-msg">{{ krsMain.errors.student_nim }}</small>
             </div>
             <div class="form-group" :class="{ 'field-error': krsMain.errors.course_code }">
