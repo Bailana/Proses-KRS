@@ -1046,7 +1046,7 @@ async function saveNewCourse() {
                 <NumericInput
                   :model-value="form.student_nim"
                   :max-length="12"
-                  placeholder="Cari NIM atau nama..."
+                  placeholder="Cari NIM"
                   @update:modelValue="form.student_nim = $event; searchStudents(form.student_nim)"
                   @blur="krsMain.validateField('student_nim')"
                 />
