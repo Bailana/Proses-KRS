@@ -438,6 +438,15 @@ async function searchStudents(query) {
   finally { searchingStudent.value = false }
 }
 
+function onNimBlur() {
+  const match = studentResults.value.find(s => s.nim === form.value.student_nim)
+  if (match) {
+    form.value.student_id = match.id
+    form.value.student_name = match.name
+    studentResults.value = []
+  }
+}
+
 async function searchCourses(query) {
   if (!query || query.length < 2) { courseResults.value = []; return }
   searchingCourse.value = true
@@ -1048,7 +1057,7 @@ async function saveNewCourse() {
                   :max-length="12"
                   placeholder="Cari NIM"
                   @update:modelValue="form.student_nim = $event; searchStudents(form.student_nim)"
-                  @blur="krsMain.validateField('student_nim')"
+                  @blur="krsMain.validateField('student_nim'); onNimBlur()"
                 />
                 <button class="btn-link" @click="activeTab = 'new-student'">+ Baru</button>
               </div>
@@ -1058,6 +1067,7 @@ async function saveNewCourse() {
                   <li v-for="s in studentResults" :key="s.id" @click="selectStudent(s)"><span class="mono">{{ s.nim }}</span> - {{ s.name }}</li>
                 </ul>
               </div>
+              <div v-if="form.student_name && !krsMain.errors.student_nim" class="student-name-display">{{ form.student_name }}</div>
               <small v-if="krsMain.errors.student_nim" class="field-msg">{{ krsMain.errors.student_nim }}</small>
             </div>
             <div class="form-group" :class="{ 'field-error': krsMain.errors.course_code }">

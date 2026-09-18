@@ -230,6 +230,11 @@
 .search-wrapper { position: relative; display: flex; gap: 8px; align-items: center; }
 .search-wrapper input { flex: 1; max-width: 300px; }
 .search-spacer { height: 0; }
+.student-name-display {
+  font-size: 12px; color: var(--success); font-weight: 500;
+  padding: 2px 0; display: flex; align-items: center; gap: 4px;
+}
+.student-name-display::before { content: '✓'; font-weight: 700; }
 .searching { font-size: 12px; color: var(--text-muted); padding: 2px 0; }
 .search-results {
   position: absolute; top: 100%; left: 0; right: 0;
