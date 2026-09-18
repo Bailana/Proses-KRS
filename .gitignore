@@ -26,3 +26,8 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# AI / agent files — jangan di-push ke repo publik
+AGENTS.md
+CLAUDE.md
+EXPORT-STRATEGY.md

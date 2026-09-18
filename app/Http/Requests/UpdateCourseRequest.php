@@ -20,7 +20,7 @@ class UpdateCourseRequest extends FormRequest
             'description' => 'nullable|string|max:2000',
             'credits' => 'nullable|integer|min:1|max:6',
             'department' => 'nullable|string|max:100',
-            'semester' => 'nullable|string|max:20',
+            'semester' => 'nullable|integer|min:1|max:12',
             'max_students' => 'nullable|integer|min:1',
             'instructor' => 'nullable|string|max:100',
             'status' => 'nullable|in:open,closed,cancelled',

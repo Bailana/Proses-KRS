@@ -14,6 +14,7 @@ class Student extends Model
 
     protected $casts = [
         'date_of_birth' => 'date',
+        'nim'           => 'integer',
     ];
 
     public function enrollments(): HasMany

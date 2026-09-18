@@ -46,7 +46,7 @@ class AcademicSeeder extends Seeder
 
         $rows = [];
         for ($i = 1; $i <= $count; $i++) {
-            $nim = '20' . str_pad($i, 6, '0', STR_PAD_LEFT);
+            $nim = 20000000 + $i; // bigint, NIM mulai 20000001
             $rows[] = [
                 'nim' => $nim,
                 'name' => $firstNames[array_rand($firstNames)] . ' ' . $lastNames[array_rand($lastNames)],
@@ -96,7 +96,7 @@ class AcademicSeeder extends Seeder
                     'description' => fake()->sentence(10),
                     'credits' => rand(2, 6),
                     'department' => $name,
-                    'semester' => fake()->randomElement(['GANJIL', 'GENAP']),
+                    'semester' => rand(1, 12),
                     'max_students' => rand(30, 80),
                     'current_enrollments' => 0,
                     'status' => fake()->randomElement(['open', 'open', 'closed']),
