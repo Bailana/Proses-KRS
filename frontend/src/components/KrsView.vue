@@ -429,36 +429,28 @@ function handleSearch() {
 }
 
 async function searchStudents(query) {
-  if (!query || query.length < 2) { studentResults.value = []; return }
+  if (!query || query.length < 2) {
+    studentResults.value = []
+    form.value.student_name = ''
+    form.value.student_id = null
+    return
+  }
   searchingStudent.value = true
   try {
     const res = await api.get('/api/krs/students/search', { params: { q: query } })
     studentResults.value = res.data
+    const match = res.data.find(s => String(s.nim) === form.value.student_nim)
+    if (match) {
+      form.value.student_id = match.id
+      form.value.student_name = match.name
+      studentResults.value = []
+    } else if (res.data.length === 1) {
+      form.value.student_id = res.data[0].id
+      form.value.student_name = res.data[0].name
+      studentResults.value = []
+    }
   } catch (e) { console.error(e) }
   finally { searchingStudent.value = false }
-}
-
-async function onNimBlur() {
-  // If a match was found in live results, use it directly
-  const match = studentResults.value.find(s => String(s.nim) === form.value.student_nim)
-  if (match) {
-    form.value.student_id = match.id
-    form.value.student_name = match.name
-    studentResults.value = []
-    return
-  }
-  // Fallback: query the API in case the search response hasn't arrived yet
-  if (form.value.student_nim && !form.value.student_name) {
-    try {
-      const res = await api.get('/api/krs/students/search', { params: { q: form.value.student_nim } })
-      const found = res.data.find(s => String(s.nim) === form.value.student_nim)
-      if (found) {
-        form.value.student_id = found.id
-        form.value.student_name = found.name
-      }
-    } catch { /* silent */ }
-    studentResults.value = []
-  }
 }
 
 async function searchCourses(query) {
@@ -1071,7 +1063,7 @@ async function saveNewCourse() {
                   :max-length="12"
                   placeholder="Cari NIM"
                   @update:modelValue="form.student_nim = $event; searchStudents(form.student_nim)"
-                  @blur="krsMain.validateField('student_nim'); onNimBlur()"
+                  @blur="krsMain.validateField('student_nim')"
                 />
                 <button class="btn-link" @click="activeTab = 'new-student'">+ Baru</button>
               </div>
