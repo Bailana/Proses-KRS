@@ -440,7 +440,7 @@ async function searchStudents(query) {
 
 async function onNimBlur() {
   // If a match was found in live results, use it directly
-  const match = studentResults.value.find(s => s.nim === form.value.student_nim)
+  const match = studentResults.value.find(s => String(s.nim) === form.value.student_nim)
   if (match) {
     form.value.student_id = match.id
     form.value.student_name = match.name
@@ -451,7 +451,7 @@ async function onNimBlur() {
   if (form.value.student_nim && !form.value.student_name) {
     try {
       const res = await api.get('/api/krs/students/search', { params: { q: form.value.student_nim } })
-      const found = res.data.find(s => s.nim === form.value.student_nim)
+      const found = res.data.find(s => String(s.nim) === form.value.student_nim)
       if (found) {
         form.value.student_id = found.id
         form.value.student_name = found.name
