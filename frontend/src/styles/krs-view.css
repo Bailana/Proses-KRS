@@ -229,7 +229,7 @@
 /* Search Results Dropdown */
 .search-wrapper { position: relative; display: flex; gap: 8px; align-items: center; }
 .search-wrapper input { flex: 1; max-width: 300px; }
-.search-spacer { min-height: 0; }
+.search-spacer { height: 0; }
 .searching { font-size: 12px; color: var(--text-muted); padding: 2px 0; }
 .search-results {
   position: absolute; top: 100%; left: 0; right: 0;
