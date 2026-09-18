@@ -1052,10 +1052,12 @@ async function saveNewCourse() {
                 />
                 <button class="btn-link" @click="activeTab = 'new-student'">+ Baru</button>
               </div>
-              <div v-if="searchingStudent" class="searching">Searching...</div>
-              <ul v-if="studentResults.length" class="search-results">
-                <li v-for="s in studentResults" :key="s.id" @click="selectStudent(s)"><span class="mono">{{ s.nim }}</span> - {{ s.name }}</li>
-              </ul>
+              <div class="search-spacer">
+                <div v-if="searchingStudent" class="searching">Searching...</div>
+                <ul v-if="studentResults.length" class="search-results">
+                  <li v-for="s in studentResults" :key="s.id" @click="selectStudent(s)"><span class="mono">{{ s.nim }}</span> - {{ s.name }}</li>
+                </ul>
+              </div>
               <small v-if="krsMain.errors.student_nim" class="field-msg">{{ krsMain.errors.student_nim }}</small>
             </div>
             <div class="form-group" :class="{ 'field-error': krsMain.errors.course_code }">
@@ -1066,10 +1068,12 @@ async function saveNewCourse() {
                        @blur="krsMain.validateField('course_code')" />
                 <button class="btn-link" @click="activeTab = 'new-course'">+ Baru</button>
               </div>
-              <div v-if="searchingCourse" class="searching">Searching...</div>
-              <ul v-if="courseResults.length" class="search-results">
-                <li v-for="c in courseResults" :key="c.id" @click="selectCourse(c)"><span class="mono">{{ c.code }}</span> - {{ c.name }}</li>
-              </ul>
+              <div class="search-spacer">
+                <div v-if="searchingCourse" class="searching">Searching...</div>
+                <ul v-if="courseResults.length" class="search-results">
+                  <li v-for="c in courseResults" :key="c.id" @click="selectCourse(c)"><span class="mono">{{ c.code }}</span> - {{ c.name }}</li>
+                </ul>
+              </div>
               <small v-if="krsMain.errors.course_code" class="field-msg">{{ krsMain.errors.course_code }}</small>
             </div>
             <div class="form-group" :class="{ 'field-error': krsMain.errors.academic_year }">
