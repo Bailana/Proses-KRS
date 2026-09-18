@@ -1045,9 +1045,8 @@ async function saveNewCourse() {
               <div class="search-wrapper">
                 <input
                   v-model="form.student_nim"
-                  maxlength="12"
                   placeholder="Cari NIM atau nama..."
-                  @input="searchStudents(form.student_nim); krsMain.validateField('student_nim')"
+                  @input="searchStudents(form.student_nim)"
                   @blur="krsMain.validateField('student_nim')"
                   class="w-full rounded-[10px] border border-[rgba(255,255,255,0.4)] bg-[rgba(255,255,255,0.35)] px-3 py-2 text-sm outline-none backdrop-blur-[10px] transition-all focus:border-[rgba(0,122,255,0.6)] focus:ring-2 focus:ring-[rgba(0,122,255,0.2)]"
                 />
