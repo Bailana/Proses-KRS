@@ -31,3 +31,14 @@ Thumbs.db
 AGENTS.md
 CLAUDE.md
 EXPORT-STRATEGY.md
+CATATAN.md
+CHANGELOG_FIXES.md
+ts_export_verify.mjs
+.pint.json
+.npmrc
+.editorconfig
+
+# ephemeral test/verification scripts (generated during acceptance testing)
+ts_*.mjs
+*_verify*.mjs
+*.test.mjs
