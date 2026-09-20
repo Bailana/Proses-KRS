@@ -59,7 +59,7 @@ Tabel akademik didefinisikan dalam `database/migrations/academic/` dan `database
 | Kolom | Tipe | Catatan |
 |-------|------|---------|
 | id | bigint PK | |
-| nim | varchar(12) unique | NIM |
+| nim | **bigint unsigned** unique | NIM (di-convert dari `varchar(12)` via migration `convert_numeric_columns_to_integer`; model cast `integer`) |
 | name | varchar(100) | Nama |
 | email | varchar(255) unique | |
 | phone | varchar(20) nullable | Hanya angka & `+` |
@@ -96,6 +96,8 @@ Tabel akademik didefinisikan dalam `database/migrations/academic/` dan `database
 
 ### `enrollment_stats` (materialized)
 Snapshot total & breakdown status yang di-refresh otomatis via `EnrollmentObserver`, sehingga endpoint stats instan (<100 ms).
+
+> **Invariant:** tabel ini harus selalu berisi **persis 1 baris (id=1)**. Observer `refresh()` update baris kanonik tersebut via `whereKey(1)->update()` — bukan `upsert` tanpa field `id` (yang akan INSERT baris baru tiap panggilan). Semua pembaca (`stats()`, `index()`) pin ke `whereKey(1)`, bukan `first()`, agar tidak membaca snapshot lama.
 
 ### `export_jobs`
 Menyimpan status export CSV async: `download_token` (unique), `status`, `progress`, `processed_rows`, `total_rows`.
@@ -291,15 +293,18 @@ Export KRS berjalan sebagai job async — wajib queue worker aktif di production
 
 ## Performa (5.000.000 baris)
 
-| Skenario | Waktu |
+| Skenario | Waktu (5 juta baris) |
 |----------|-------|
 | List unfiltered (cached total) | ~300 ms |
-| Stats cards | ~260 ms |
-| Filter semester (cached) | ~280 ms |
+| Stats cards (1 baris kanonik) | ~260 ms |
+| Filter semester (cached count 60 s) | ~280 ms |
 | Search NIM (two-phase) | ~400 ms |
-| Export 5 juta ke CSV | ~30 menit (async, <500 MB RAM) |
+| **Export terfilter** (quick filter + search) | **~16 s** (progress muncul di 7 s) |
+| **Export 5 juta tanpa filter** | **~52 s** (progress muncul di 26 s) |
 
-Optimasi: materialized stats, cached total, two-phase search, composite indexes, query cache 60 s, chunked export 200K baris/chunk.
+Optimasi: materialized stats (1 baris kanonik), cached total, two-phase search, composite indexes, query cache 60 s, chunked export 200K baris/chunk, lookup student/course per-chunk (bukan pre-load seluruh tabel ke memori).
+
+> Export sekarang membatasi memori di ukuran chunk, bukan di jumlah total baris — worker `--memory=1024` tidak crash walau diuji back-to-back export 5M.
 
 ---
 
@@ -1361,3 +1366,71 @@ Data rows:                  5.000.000
 ### Ringkasan Status TS-13
 
 **Kesimpulan: TS-13 LULUS** — export 5 juta baris CSV berjalan stabil via background job queue; semua data terinclude tanpa pagination limit; progress real-time; file dapat diunduh dan diinspeksi.
+
+---
+
+## Perbaikan Terbaru (2026-09-20)
+
+Empat perbaikan yang mengubah perilaku sistem; setiap item terverifikasi terhadap dataset 5 juta baris. Riwayat lengkap ada di `CHANGELOG_FIXES.md`.
+
+### 1. Stat card tidak berubah setelah create/update/delete KRS
+**Gejala:** Card Total/Submitted/Approved/Rejected di KrsView "mandek" di angka lama meskipun data berubah.
+
+**Akar:** `EnrollmentObserver::refresh()` memanggil `EnrollmentStats::upsert(payload, ['id'])` **tanpa field `id` di payload** → Eloquent INSERT baris baru setiap perubahan (tabel membengkak 1 → 25 baris). `stats()` & `index()` membaca `EnrollmentStats::first()` → selalu snapshot id=1 (paling lama).
+
+**Fix:** Observer kini `whereKey(1)->update()` (satu baris kanonik). `stats()` & `index()` pin ke `whereKey(1)`. Data stray (id 2–25) dihapus.
+
+**Verifikasi:** `enrollment_stats` kembali ke 1 baris. Buat 1 enrollment via Eloquent → `total` 5.000.004 → 5.000.005, baris tetap 1.
+
+---
+
+### 2. Export NIM search = "ts" memuntahkan seluruh 5M baris
+**Gejala:** `search_nim=ts` (tidak ada mahasiswa NIM-nya) menghasilkan export 5.000.003 baris / 600 MB, bukan 0 baris.
+
+**Akar:** `ExportEnrollmentsJob::applySearch()` — saat search box aktif tapi resolv 0 id, closure `whereIn` tidak menambah kondisi apa pun → query jadi tanpa filter.
+
+**Fix:** Jika ada search aktif tapi 0 hasil, pasang `whereIn('enrollments.id', [0])` → hasil 0 baris.
+
+**Verifikasi:** `search_nim=zzz` → **2 detik, 0 baris, 0 MB** (sebelumnya 58 detik / 600 MB).
+
+---
+
+### 3. Export progress "0 baris" stuck + worker crash
+**Gejala:** UI export stuck di "Memproses… 0 baris" selamanya; worker mati tanpa error terlihat.
+
+**Akar:** (a) Job pre-load **semua** 7.002 student + course ke 2 map in-memory → melebihi `memory_limit 512M` saat export 5M → worker crash. (b) `total_rows` baru ditulis ke DB setelah loop selesai, sehingga UI poll tak pernah melihat progress.
+
+**Fix:**
+- Lookup student/course diubah **per-chunk** (`whereIn` hanya id yang ada di chunk tsb) → cap memori di ukuran chunk.
+- `total_rows` ditulis ke DB **sebelum** loop streaming dimulai.
+- Count terfilter pakai `Cache::remember` 60 s (sama dengan `KrsController::index`); unfiltered pakai `EnrollmentStats`.
+
+**Verifikasi:**
+- Filtered export (`APPROVED`+`GANJIL`): **16 detik**, progress muncul di **7 detik**, `833.071/833.071 baris` — MATCH tabel.
+- Unfiltered 5M: **52 detik**, progress di **26 detik**, `5.000.003/5.000.000`.
+- Worker `--memory=1024` bertahan setelah export 5M back-to-back.
+
+> **Prasyarat dev:** `php artisan serve` dan `php artisan queue:work --memory=1024` harus berjalan **bersamaan**. Tanpa worker, setiap export stuck di "Memproses… 0 baris" — persis gejala di atas.
+
+---
+
+### 4. Validasi NIM: integer vs string
+**Gejala:** Update KRS dari modal Edit → error *"The student nim field must be a string"* padahal NIM adalah `BIGINT`.
+
+**Akar:** Kolom `students.nim` = `bigint`, model cast `integer` → API mengembalikan `nim` sebagai number. Form Edit salin langsung ke `form.student_nim`, lalu dikirim balik sebagai number. Validasi `updateKrs()` menuntut `string`.
+
+**Fix:**
+- `KrsController` (`storeKrs` & `updateKrs`): rule `student_nim` → `nullable|integer|digits_between:8,12` (menerima number & string).
+- `KrsView.vue` `openEdit()`: cast `form.student_nim = String(e.student?.nim)` → input form konsisten teks.
+
+**Verifikasi:** `student_nim` sebagai JSON number → 200 "updated successfully"; sebagai string → 200.
+
+---
+
+### Impact pada Dokumentasi di Atas
+| Bagian README | Perubahan |
+|---|---|
+| Schema `students.nim` | `varchar(12)` → **`bigint unsigned`** |
+| `enrollment_stats` | Dijelaskan invariant 1 baris kanonik + pin `whereKey(1)` |
+| Performa export | ~45 s (lama) → **~52 s** unfiltered, **~16 s** terfilter; progress muncul lebih cepat |
+| Prasyarat dev | Worker queue `--memory=1024` wajib berjalan |
