@@ -24,6 +24,8 @@ class ExportEnrollmentsJob implements ShouldQueue
 
     protected int $progress = 0;
 
+    protected ?Closure $filterClosure = null;
+
     protected const FILTER_COLUMNS = [
         'nim' => ['students', 'nim'],
         'student_name' => ['students', 'name'],
@@ -63,23 +65,41 @@ class ExportEnrollmentsJob implements ShouldQueue
 
     public function handle(): void
     {
-        // Pre-fetch lookup data once (massive speedup vs N+1)
-        $studentMap = DB::table('students')->get(['id', 'nim', 'name'])->keyBy('id');
-        $courseMap = DB::table('courses')->get(['id', 'code', 'name'])->keyBy('id');
-
+        // Build the filtered query ONCE and reuse it for the count + every
+        // streaming chunk. The student/course lookups are fetched per-chunk
+        // (not as two global in-memory maps) so a 5M-row export can't blow
+        // the worker's memory limit — each chunk only holds its own ~50k
+        // rows worth of lookup data, then frees it before the next chunk.
         $filters = $this->params['filters'] ?? null;
         $filterLogic = $this->params['filter_logic'] ?? 'and';
-        $filterClosure = $this->buildFilterClosure($filters, $filterLogic);
+        $this->filterClosure = $this->buildFilterClosure($filters, $filterLogic);
+        $hasAnyFilter = $this->filterClosure !== null || $this->hasQuickFilters() || $this->hasSearch();
 
-        // Estimate total for progress — cheaper than exact count
-        $estimatedTotal = $filterClosure ? 5000000 : 5000000;
-        if ($filterClosure) {
-            $query = DB::table('enrollments');
-            $query->where(function ($q) use ($filterClosure) {
-                $filterClosure($q);
-            });
-            $estimatedTotal = (int) $query->count();
+        // Estimate total for progress — use the same 60s cache the KRS table
+        // uses, so the count is instant instead of a second full scan.
+        // For unfiltered exports use EnrollmentStats (instant) rather than 5M.
+        if ($hasAnyFilter) {
+            $cacheKey = 'krs_export_count_'.md5(
+                json_encode([$this->params, $filterLogic])
+            );
+            $estimatedTotal = (int) \Illuminate\Support\Facades\Cache::remember(
+                $cacheKey, 60, fn () => $this->buildFilteredQuery()->count()
+            );
+        } else {
+            $stats = \App\Models\EnrollmentStats::first();
+            $estimatedTotal = (int) ($stats?->total ?? 5000000);
         }
+
+        // Tell the UI immediately that the job is live and what the total is,
+        // so the progress bar doesn't sit at 0%/0 rows while the first chunk
+        // streams in.
+        $this->progress = 0;
+        DB::table('export_jobs')
+            ->where('id', $this->params['job_id'] ?? null)
+            ->update([
+                'total_rows' => $estimatedTotal,
+                'updated_at' => now(),
+            ]);
 
         $stream = fopen($this->filePath, 'w');
         fputcsv($stream, [
@@ -89,28 +109,35 @@ class ExportEnrollmentsJob implements ShouldQueue
             'Status', 'Grade', 'GPA Points', 'Tanggal Dibuat',
         ]);
 
-        $chunkSize = 200000; // Larger chunks for better throughput
+        // Streaming (CURSOR, not OFFSET) on the filtered set. Each chunk only
+        // scans forward from the last-seen matching row's ID, so a small
+        // filtered export stays fast instead of crawling 5M rows.
+        $chunkSize = $hasAnyFilter ? 50000 : 200000;
         $lastId = 0;
-        $progressUpdateInterval = 10; // Update DB every 10 chunks, not every row
+        $progressUpdateInterval = $hasAnyFilter ? 2 : 10;
         $chunkCount = 0;
 
         while (true) {
-            $query = DB::table('enrollments')
-                ->where('enrollments.id', '>', $lastId)
+            $query = $this->buildFilteredQuery();
+            $query->where('enrollments.id', '>', $lastId)
                 ->orderBy('enrollments.id', 'asc')
                 ->limit($chunkSize);
-
-            if ($filterClosure) {
-                $query->where(function ($q) use ($filterClosure) {
-                    $filterClosure($q);
-                });
-            }
 
             $batch = $query->get(['id', 'student_id', 'course_id', 'academic_year', 'semester', 'status', 'grade', 'gpa_points', 'created_at']);
 
             if ($batch->isEmpty()) {
                 break;
             }
+
+            // Per-chunk lookups: fetch only the student/course ids present in
+            // THIS chunk. Holding these maps per-chunk (then dropping them)
+            // caps memory at ~chunk-size instead of the whole 7k-student table.
+            $studentIds = $batch->pluck('student_id')->unique()->values();
+            $courseIds = $batch->pluck('course_id')->unique()->values();
+            $studentMap = $studentIds->isEmpty() ? collect()
+                : DB::table('students')->whereIn('id', $studentIds)->get(['id', 'nim', 'name'])->keyBy('id');
+            $courseMap = $courseIds->isEmpty() ? collect()
+                : DB::table('courses')->whereIn('id', $courseIds)->get(['id', 'code', 'name'])->keyBy('id');
 
             foreach ($batch as $row) {
                 $student = $studentMap->get($row->student_id);
@@ -201,10 +228,15 @@ class ExportEnrollmentsJob implements ShouldQueue
                 $tableName = $colDef[0];
                 $colName = $colDef[1];
 
-                if ($tableName !== 'enrollments') {
+                if ($tableName === 'students') {
                     $sql = $query->toSql();
-                    if (stripos($sql, 'join '.$tableName) === false) {
-                        $query->join($tableName, "enrollments.{$tableName}_id", '=', "{$tableName}.id");
+                    if (stripos($sql, 'join students') === false) {
+                        $query->join('students', 'enrollments.student_id', '=', 'students.id');
+                    }
+                } elseif ($tableName === 'courses') {
+                    $sql = $query->toSql();
+                    if (stripos($sql, 'join courses') === false) {
+                        $query->join('courses', 'enrollments.course_id', '=', 'courses.id');
                     }
                 }
 
@@ -309,6 +341,114 @@ class ExportEnrollmentsJob implements ShouldQueue
                 break;
             default: $query->orWhere($column, $op, $value);
         }
+    }
+
+    /**
+     * Build a query applying quick filters + search + advanced filters.
+     * Callers add their own ordering / limit / id-cursor on top.
+     */
+    protected function buildFilteredQuery()
+    {
+        $query = DB::table('enrollments');
+        $this->applyQuickFilters($query);
+        $this->applySearch($query);
+        if ($this->filterClosure !== null) {
+            $closure = $this->filterClosure;
+            $query->where(function ($q) use ($closure) {
+                $closure($q);
+            });
+        }
+        return $query;
+    }
+
+    /**
+     * Whether any of the simple/quick filters or search boxes are active.
+     */
+    protected function hasQuickFilters(): bool
+    {
+        return ! empty($this->params['status'])
+            || ! empty($this->params['semester'])
+            || ! empty($this->params['academic_year']);
+    }
+
+    /**
+     * Whether any search box (NIM / Nama / Kode MK) is active.
+     */
+    protected function hasSearch(): bool
+    {
+        return ! empty($this->params['search_nim'])
+            || ! empty($this->params['search_name'])
+            || ! empty($this->params['search_course_code']);
+    }
+
+    /**
+     * Apply the quick filters (status / semester / academic_year) — same
+     * semantics as KrsController::index simple filterable fields.
+     */
+    protected function applyQuickFilters($query): void
+    {
+        $status = (string) ($this->params['status'] ?? '');
+        $semester = (string) ($this->params['semester'] ?? '');
+        $year = (string) ($this->params['academic_year'] ?? '');
+
+        if ($status !== '') {
+            $query->where('enrollments.status', '=', $status);
+        }
+        if ($semester !== '') {
+            $query->where('enrollments.semester', '=', $semester);
+        }
+        if ($year !== '') {
+            $query->where('enrollments.academic_year', '=', $year);
+        }
+    }
+
+    /**
+     * Apply the search boxes (NIM / Nama / Kode MK) — OR across subqueries,
+     * mirroring KrsController::applySearch.
+     */
+    protected function applySearch($query): void
+    {
+        $nim = trim((string) ($this->params['search_nim'] ?? ''));
+        $name = trim((string) ($this->params['search_name'] ?? ''));
+        $courseCode = trim((string) ($this->params['search_course_code'] ?? ''));
+
+        if ($nim === '' && $name === '' && $courseCode === '') {
+            return;
+        }
+
+        $studentIds = [];
+        if ($nim !== '') {
+            $studentIds = array_merge($studentIds, DB::table('students')->where('nim', 'LIKE', "%{$nim}%")->pluck('id')->all());
+        }
+        if ($name !== '') {
+            $studentIds = array_merge($studentIds, DB::table('students')->where('name', 'LIKE', "%{$name}%")->pluck('id')->all());
+        }
+        $courseIds = [];
+        if ($courseCode !== '') {
+            $courseIds = DB::table('courses')->where('code', 'LIKE', "%{$courseCode}%")->pluck('id')->all();
+        }
+
+        $uniqueStudentIds = array_values(array_unique($studentIds));
+        $uniqueCourseIds = array_values(array_unique($courseIds));
+
+        // If a search box is active but resolves to ZERO matching ids, the
+        // result must be an empty set — not "no filter". Without this, a
+        // search like NIM=ts (no such student) would silently dump the whole
+        // table. An impossible id (0) makes whereIn/whereOrIn match nothing.
+        $noMatches = empty($uniqueStudentIds) && empty($uniqueCourseIds);
+        if ($noMatches) {
+            $query->whereIn('enrollments.id', [0]);
+            return;
+        }
+
+        $query->where(function ($q) use ($uniqueStudentIds, $uniqueCourseIds) {
+            if (! empty($uniqueStudentIds)) {
+                $q->whereIn('enrollments.student_id', $uniqueStudentIds);
+            }
+            if (! empty($uniqueCourseIds)) {
+                $q->orWhereIn('enrollments.course_id', $uniqueCourseIds);
+            }
+        });
     }
 
     protected function getTotalCount(?Closure $filterClosure): int

@@ -106,7 +106,7 @@ class KrsController extends BaseController
 
         // Count with cache for slow filters
         if (! $hasSearch && ! $hasFilter) {
-            $stats = EnrollmentStats::first();
+            $stats = EnrollmentStats::whereKey(1)->first();
             $total = (int) ($stats?->total ?? 0);
 
             // Keyset pagination for unfiltered results
@@ -205,7 +205,7 @@ class KrsController extends BaseController
             if ($i === 0) {
                 $this->applyFilterCondition($query, $fullColumn, $op, $value);
             } elseif ($logic === 'or') {
-                $this->applyFilterCondition($query, $fullColumn, $op, $value, 'orWhere');
+                $this->applyFilterCondition($query, $fullColumn, $op, $value, true);
             } else {
                 $this->applyFilterCondition($query, $fullColumn, $op, $value);
             }
@@ -233,60 +233,62 @@ class KrsController extends BaseController
         ];
     }
 
-    protected function applyFilterCondition($query, $column, $op, $value): void
+    protected function applyFilterCondition($query, $column, $op, $value, bool $or = false): void
     {
+        $method = $or ? 'orWhere' : 'where';
+
         switch ($op) {
             case 'like':
-                $query->where($column, 'LIKE', '%'.$value.'%');
+                $query->{$method}($column, 'LIKE', '%'.$value.'%');
                 break;
             case 'not_like':
-                $query->where($column, 'NOT LIKE', '%'.$value.'%');
+                $query->{$method}($column, 'NOT LIKE', '%'.$value.'%');
                 break;
             case 'like_prefix':
-                $query->where($column, 'LIKE', $value.'%');
+                $query->{$method}($column, 'LIKE', $value.'%');
                 break;
             case 'like_suffix':
-                $query->where($column, 'LIKE', '%'.$value);
+                $query->{$method}($column, 'LIKE', '%'.$value);
                 break;
             case '=':
-                $query->where($column, '=', $value);
+                $query->{$method}($column, '=', $value);
                 break;
             case '!=':
-                $query->where($column, '<>', $value);
+                $query->{$method}($column, '<>', $value);
                 break;
             case '>':
-                $query->where($column, '>', $value);
+                $query->{$method}($column, '>', $value);
                 break;
             case '<':
-                $query->where($column, '<', $value);
+                $query->{$method}($column, '<', $value);
                 break;
             case '>=':
-                $query->where($column, '>=', $value);
+                $query->{$method}($column, '>=', $value);
                 break;
             case '<=':
-                $query->where($column, '<=', $value);
+                $query->{$method}($column, '<=', $value);
                 break;
             case 'between':
                 if (is_array($value) && count($value) === 2) {
-                    $query->whereBetween($column, $value);
+                    $or ? $query->orWhereBetween($column, $value) : $query->whereBetween($column, $value);
                 }
                 break;
             case 'in':
                 $values = is_array($value) ? $value : [$value];
-                $query->whereIn($column, $values);
+                $or ? $query->orWhereIn($column, $values) : $query->whereIn($column, $values);
                 break;
             case 'not_in':
                 $values = is_array($value) ? $value : [$value];
-                $query->whereNotIn($column, $values);
+                $or ? $query->orWhereNotIn($column, $values) : $query->whereNotIn($column, $values);
                 break;
             case 'is_null':
-                $query->whereNull($column);
+                $or ? $query->orWhereNull($column) : $query->whereNull($column);
                 break;
             case 'is_not_null':
-                $query->whereNotNull($column);
+                $or ? $query->orWhereNotNull($column) : $query->whereNotNull($column);
                 break;
             default:
-                $query->where($column, $op, $value);
+                $query->{$method}($column, $op, $value);
         }
     }
 
@@ -296,6 +298,15 @@ class KrsController extends BaseController
             $query->leftJoin('students', 'enrollments.student_id', '=', 'students.id');
             $query->leftJoin('courses', 'enrollments.course_id', '=', 'courses.id');
         }
+    }
+
+    protected function parseJsonParam($value): ?array
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        $decoded = is_array($value) ? $value : json_decode($value, true);
+        return is_array($decoded) ? $decoded : null;
     }
 
     protected function applyAdvancedSorts($query, Request $request): void
@@ -396,7 +407,9 @@ class KrsController extends BaseController
 
     public function stats(Request $request): JsonResponse
     {
-        $stats = EnrollmentStats::firstOrcreate();
+        // Always read the canonical row (id=1). first() previously returned
+        // the oldest of many duplicate rows the buggy observer had created.
+        $stats = EnrollmentStats::whereKey(1)->firstOr(fn () => EnrollmentStats::create([]));
 
         // Apply filters client-side (cached)
         $filters = $request->input('filters');
@@ -475,7 +488,7 @@ class KrsController extends BaseController
     public function storeKrs(Request $request)
     {
         $validated = $request->validate([
-            'student_nim' => 'nullable|string|max:12|regex:/^[0-9]{8,12}$/',
+            'student_nim' => 'nullable|integer|digits_between:8,12',
             'student_name' => 'nullable|string|min:3|max:100',
             'student_email' => 'nullable|email|max:200',
             'student_phone' => 'nullable|string|max:20',
@@ -594,7 +607,7 @@ class KrsController extends BaseController
             'status' => 'nullable|in:DRAFT,SUBMITTED,APPROVED,REJECTED',
             'grade' => 'nullable|in:A,A-,B+,B,B-,C,C-,D,E,I,S,K',
             'gpa_points' => 'nullable|numeric|min:0|max:4',
-            'student_nim' => 'nullable|string|max:12|regex:/^[0-9]{8,12}$/',
+            'student_nim' => 'nullable|integer|digits_between:8,12',
             'student_name' => 'nullable|string|min:3|max:100',
             'student_email' => 'nullable|email|max:200',
             'course_code' => 'nullable|string|max:10|regex:/^[A-Z]{2,4}[0-9]{3}$/',
@@ -683,10 +696,19 @@ class KrsController extends BaseController
             $filters = json_decode($filters, true);
         }
 
-        $filterLogic = $request->input('filter_logic', 'and');
+        // Forward EVERYTHING the table is filtered/sorted by so the export
+        // matches the on-screen data (quick filters, search boxes, advanced
+        // filters, and advanced sorts) — not just the advanced filter panel.
         $params = [
             'filters' => $filters,
-            'filter_logic' => $filterLogic,
+            'filter_logic' => $request->input('filter_logic', 'and'),
+            'sorts' => $this->parseJsonParam($request->input('sorts')),
+            'search_nim' => (string) $request->input('search_nim', ''),
+            'search_name' => (string) $request->input('search_name', ''),
+            'search_course_code' => (string) $request->input('search_course_code', ''),
+            'status' => (string) $request->input('status', ''),
+            'semester' => (string) $request->input('semester', ''),
+            'academic_year' => (string) $request->input('academic_year', ''),
             'job_id' => null,
         ];
 

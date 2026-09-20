@@ -490,14 +490,26 @@ async function exportData() {
   exportProgress.value = { status: 'init', progress: 0, rows: 0 }
 
   try {
+    // Build the SAME filter/search/sort params the table uses (mirrors load()),
+    // so the export matches exactly what is shown in the table — not just the
+    // advanced "Filter Lanjutan" panel.
     const params = {}
+    if (stateData.value.filters.status) params.status = stateData.value.filters.status
+    if (stateData.value.filters.academic_year) params.academic_year = stateData.value.filters.academic_year
+    if (stateData.value.filters.semester) params.semester = stateData.value.filters.semester
+    if (searchNim.value) params.search_nim = searchNim.value
+    if (searchName.value) params.search_name = searchName.value
+    if (searchCourseCode.value) params.search_course_code = searchCourseCode.value
     if (advancedFilters.value.length) {
       params.filters = JSON.stringify(serializeFilters())
       params.filter_logic = filterLogic.value
     }
+    if (advancedSorts.value.length) {
+      params.sorts = JSON.stringify(advancedSorts.value)
+    }
+
     const res = await api.get('/api/krs/export/init', { params })
     const token = res.data.download_token
-    currentExportToken = token
 
     localStorage.setItem('lastExportToken', token)
     localStorage.setItem('lastExportState', JSON.stringify({
@@ -679,7 +691,7 @@ function fieldToLabel(field) {
 
 function openEdit(e) {
   editingId.value = e.id
-  form.value = { ...e, student_nim: e.student?.nim || '', student_name: e.student?.name || '', course_code: e.course?.code || '', course_name: e.course?.name || '', course_credits: e.course?.credits || 3 }
+  form.value = { ...e, student_nim: e.student?.nim ? String(e.student.nim) : '', student_name: e.student?.name || '', course_code: e.course?.code || '', course_name: e.course?.name || '', course_credits: e.course?.credits || 3 }
   activeTab.value = 'edit'
   showForm.value = true
   error.value = []
