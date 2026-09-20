@@ -114,7 +114,10 @@ class ExportEnrollmentsJob implements ShouldQueue
         // filtered export stays fast instead of crawling 5M rows.
         $chunkSize = $hasAnyFilter ? 50000 : 200000;
         $lastId = 0;
-        $progressUpdateInterval = $hasAnyFilter ? 2 : 10;
+        // Update progress every 1st chunk (filtered) / every 5th chunk
+        // (unfiltered 200K rows). Combined with the 1.8s CSS transition on
+        // the frontend, the bar glides smoothly instead of jumping.
+        $progressUpdateInterval = $hasAnyFilter ? 1 : 5;
         $chunkCount = 0;
 
         while (true) {
@@ -170,8 +173,11 @@ class ExportEnrollmentsJob implements ShouldQueue
             $lastId = $batch->last()->id;
             $chunkCount++;
 
-            // Update progress less frequently to reduce DB writes
-            if ($chunkCount % $progressUpdateInterval === 0) {
+            // Update progress every chunk for the filtered export, every
+            // Nth chunk for the big unfiltered export (200K rows/chunk would
+            // be too many DB writes). The CSS transition on the frontend
+            // smooths the UI regardless of how often we poll.
+            if ($chunkCount % $progressUpdateInterval === 0 || $this->count === 0) {
                 $this->progress = (int) min(99, ($this->count / max(1, $estimatedTotal)) * 100);
                 DB::table('export_jobs')
                     ->where('id', $this->params['job_id'] ?? null)

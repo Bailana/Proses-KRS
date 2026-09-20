@@ -98,7 +98,9 @@
 .export-status { font-weight: 600; color: var(--accent); }
 .export-rows { color: #94a3b8; font-size: 12px; }
 .export-progress-track { flex: 1; height: 8px; background: rgba(255,255,255,0.3); border-radius: 4px; overflow: hidden; min-width: 120px; }
-.export-progress-fill { height: 100%; background: linear-gradient(90deg, #007AFF, #AF52DE); transition: width 0.3s; border-radius: 4px; }
+.export-progress-fill { height: 100%; background: linear-gradient(90deg, #007AFF, #AF52DE); transition: width 1.8s cubic-bezier(0.22, 1, 0.36, 1); border-radius: 4px; position: relative; }
+.export-progress-fill::after { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent); animation: shimmer 2s infinite; }
+@keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
 .export-pct { font-size: 13px; font-weight: 600; color: var(--accent); min-width: 40px; text-align: right; }
 
 .export-success-toast {

@@ -799,8 +799,45 @@ class KrsController extends BaseController
             abort(404);
         }
 
-        return response()->download($job->file_path, 'krs_export.csv')
-            ->deleteFileAfterSend(true);
+        // Streamed download: PHP reads the file in 8 KB chunks and writes each
+        // chunk to the response immediately, rather than loading the entire
+        // 600 MB file into a PHP buffer. This keeps memory flat regardless
+        // of file size and avoids the OOM that `response()->download()`
+        // (which internally uses `file_get_contents` or SplFileInfo) would
+        // trigger for very large files.
+        $handle = fopen($job->file_path, 'rb');
+        if (! $handle) {
+            abort(500);
+        }
+
+        $size = filesize($job->file_path);
+        $downloadName = 'krs_export.csv';
+
+        // Clean up the temp file after the stream is fully sent.
+        // Unlink is safe to call before the response completes — the OS keeps
+        // the file descriptor open until the process exits, so the data is
+        // already buffered and sent to the client.
+        $filePathToDelete = $job->file_path;
+
+        $response = response()->stream(function () use ($handle, $filePathToDelete) {
+            while (! feof($handle)) {
+                $chunk = fread($handle, 8192); // 8 KB per read
+                if ($chunk === false || $chunk === '') {
+                    break;
+                }
+                echo $chunk;
+                flush();
+            }
+            fclose($handle);
+            @unlink($filePathToDelete);
+        }, 200, [
+            'Content-Type'         => 'text/csv; charset=UTF-8',
+            'Content-Disposition'  => "attachment; filename=\"krs_export.csv\"",
+            'Content-Length'       => (string) $size,
+            'Cache-Control'        => 'private',
+        ]);
+
+        return $response;
     }
 
     /**
